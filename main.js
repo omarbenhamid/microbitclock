@@ -1,7 +1,7 @@
 input.onGesture(Gesture.Shake, function () {
-    wakeUp()
+
 })
-function wakeUp () {
+function wakeUp() {
     wakeUpTime = input.runningTime()
     OLED12864_I2C.on()
     basic.showIcon(IconNames.Happy)
@@ -24,6 +24,10 @@ ds.start()
 OLED12864_I2C.init(60)
 OLED12864_I2C.on()
 basic.forever(function () {
+    if (Math.abs(input.acceleration(Dimension.Strength) - 1055) > 20) {
+        wakeUp()
+    }
+    serial.writeValue("x", input.acceleration(Dimension.Strength))
     if (wakeUpTime >= 0 && input.runningTime() > wakeUpTime + sleepTimeOutMillis) {
         wakeUpTime = -1
         OLED12864_I2C.off()
@@ -32,15 +36,15 @@ basic.forever(function () {
         basic.showString("")
     }
     OLED12864_I2C.showString(
-    0,
-    0,
-    "" + convertToText(ds.getDay()) + "/" + convertToText(ds.getMonth()) + "/" + convertToText(ds.getYear()),
-    1
+        0,
+        0,
+        "" + convertToText(ds.getDay()) + "/" + convertToText(ds.getMonth()) + "/" + convertToText(ds.getYear()),
+        1
     )
     OLED12864_I2C.showString(
-    0,
-    1,
-    "" + toTwoDigitText(ds.getHour()) + ":" + toTwoDigitText(ds.getMinute()) + "." + toTwoDigitText(ds.getSecond()),
-    1
+        0,
+        1,
+        "" + toTwoDigitText(ds.getHour()) + ":" + toTwoDigitText(ds.getMinute()) + "." + toTwoDigitText(ds.getSecond()),
+        1
     )
 })
