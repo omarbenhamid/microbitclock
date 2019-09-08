@@ -6,10 +6,10 @@ function wakeUp () {
     OLED12864_I2C.on()
     basic.showIcon(IconNames.Happy)
 }
-input.onButtonPressed(Button.B, function () {
+input.onButtonPressed(Button.A, function () {
     wakeUp()
 })
-input.onButtonPressed(Button.A, function () {
+input.onButtonPressed(Button.B, function () {
     wakeUp()
 })
 let wakeUpTime = 0
@@ -19,7 +19,7 @@ function toTwoDigitText(num: number) {
     if (num < 10) return "0" + convertToText(num);
     else return convertToText(num);
 }
-let ds = DS1302.create(DigitalPin.P11, DigitalPin.P12, DigitalPin.P13)
+let ds = DS1302.create(DigitalPin.P13, DigitalPin.P14, DigitalPin.P15)
 ds.start()
 OLED12864_I2C.init(60)
 OLED12864_I2C.on()
@@ -29,13 +29,7 @@ basic.forever(function () {
         OLED12864_I2C.off()
         basic.showIcon(IconNames.Asleep)
         basic.pause(500)
-        basic.showLeds(`
-            . . . . .
-            . . . . .
-            . . . . .
-            . . . . .
-            . . . . .
-            `)
+        basic.showString("")
     }
     OLED12864_I2C.showString(
     0,
