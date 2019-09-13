@@ -45,16 +45,17 @@ serial.onDataReceived(serial.delimiters(Delimiters.Dollar), function () {
         serial.writeLine("Bad format: 8 columns required")
         return;
     }
-    j = parseInt(data[0])
-    if (!(j >= 1 && j <= 12)) {
+    let mois = parseInt(data[0])
+    if (!(mois >= 1 && mois <= 12)) {
         serial.writeLine("Bad format: Col 1 (month) must be a number between 1 and 12")
         return;
     }
-    j = parseInt(data[1])
-    if (!(j >= 1 && j <= 31)) {
+    let jour = parseInt(data[1])
+    if (!(jour >= 1 && jour <= 31)) {
         serial.writeLine("Bad format: Col 2 (day) must be a number between 1 and 31")
         return;
     }
+
     data.forEach(function (v: string, idx: number) {
         if (idx < 2) return; //Skip month / day
         if (v.indexOf(':') < 0) {
@@ -78,61 +79,88 @@ serial.onDataReceived(serial.delimiters(Delimiters.Dollar), function () {
         return;
     }
     serial.writeLine("Updating salat times")
-    f.seek(0, FileSystemSeekFlags.End)
+
+    if (!seekLineForDay(mois, jour))
+        f.seek(0, FileSystemSeekFlags.End)
+
     f.writeString(dataline + "\r\n")
     f.flush()
     nextSalat = -1
     serial.writeLine("Done")
     basic.showIcon(IconNames.Yes)
 })
-function loadNextSalat(mois: number, jour: number, heureAct: number, minAct: number) {
-    basic.showIcon(IconNames.SmallDiamond)
-    serial.writeLine("\r\nComputing next salat time.")
-    f.seek(0, FileSystemSeekFlags.Set)
-    b = "haha!"
-    let nextDay = false;
-    while (nextSalat < 0) {
+
+function seekLineForDay(mois: number, jour: number, startpos: number = 0): boolean {
+    let ret = 0
+    f.seek(startpos, FileSystemSeekFlags.Set)
+
+    while (true) {
         b = f.readBuffer(43).toString();
         debug(b)
-        if (b.length < 43) {
-            //End of file
-            if (nextDay) {
-                serial.writeLine("Failed finding a salat time")
-                basic.showIcon(IconNames.No)
-                return;
-            } else {
-                serial.writeLine("Checking tomorrow")
-                nextDay = true;
-                if (jour < jdm(mois)) {
-                    jour = jour + 1
-                } else {
-                    jour = 1
-                    mois = mois + 1
-                    if (mois > 12) {
-                        mois = 1
-                    }
-                }
-                f.seek(0, FileSystemSeekFlags.Set)
-                continue;
-            }
-        }
-        let data = b.split(',');
-        if (parseInt(data[0]) != mois || parseInt(data[1]) != jour) continue;
-        data.find(function (v: string, i: number): boolean {
-            if (i < 2) return false; //Skip month / day
-            let p = v.split(':');
-            nextSalatHour = parseFloat(p[0]);
-            nextSalatMin = parseFloat(p[1]);
-            if (nextSalatHour < heureAct) return false;
-            if (nextSalatHour == heureAct && nextSalatMin <= minAct) return false;
-            nextSalat = i - 1;
-            debug("Next", nextSalatHour + ":" + nextSalatMin, " index :" + nextSalat);
+        if (b.length < 43) return false;
+        let data = b.split(',', 3)
+        if (parseInt(data[0]) == mois && parseInt(data[1]) == jour) {
+            f.seek(ret, FileSystemSeekFlags.Set);
             return true;
-        });
+        }
+        ret += 43
+    }
+}
+
+function computeSalatTimeFromRecord(b: string, heureAct: number, minAct: number) {
+    b.split(',').find(function (v: string, i: number): boolean {
+        if (i < 2) return false; //Skip month / day
+        let p = v.split(':');
+        nextSalatHour = parseFloat(p[0]);
+        nextSalatMin = parseFloat(p[1]);
+        if (nextSalatHour < heureAct) return false;
+        if (nextSalatHour == heureAct && nextSalatMin <= minAct) return false;
+        nextSalat = i - 1;
+        debug("Next salat", nextSalatHour + ":" + nextSalatMin, " index :" + nextSalat);
+        return true;
+    });
+}
+
+function loadNextSalat(mois: number, jour: number, heureAct: number, minAct: number) {
+    basic.showIcon(IconNames.SmallDiamond)
+    debug("\r\nComputing next salat time.")
+
+    if (!seekLineForDay(mois, jour)) {
+        debug("No data line for " + jour + "/" + mois)
+        basic.showIcon(IconNames.No)
+        return;
+    }
+    computeSalatTimeFromRecord(f.readBuffer(43).toString(), heureAct, minAct)
+    if (nextSalat >= 0) {
+        basic.showIcon(IconNames.Yes)
+        return;
     }
 
-    basic.showIcon(IconNames.Yes)
+    debug("Not found today, checking tomorrow")
+
+    if (jour < jdm(mois)) {
+        jour = jour + 1
+    } else {
+        jour = 1
+        mois = mois + 1
+        if (mois > 12) {
+            mois = 1
+        }
+    }
+
+    if (!seekLineForDay(mois, jour)) {
+        debug("No data line for " + jour + "/" + mois)
+        basic.showIcon(IconNames.No)
+        return;
+    }
+    computeSalatTimeFromRecord(f.readBuffer(43).toString(), 0, 0)
+    if (nextSalat >= 0) {
+        basic.showIcon(IconNames.Yes)
+    } else {
+        basic.showIcon(IconNames.No)
+    }
 }
+
 function checkAdhan(h: number, m: number) {
     if (nextSalat < 0) {
         return;
