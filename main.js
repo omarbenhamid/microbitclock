@@ -55,7 +55,7 @@ serial.onDataReceived(serial.delimiters(Delimiters.Dollar), function () {
         serial.writeLine("Bad format: Col 2 (day) must be a number between 1 and 31")
         return;
     }
-
+    let fail: boolean = false
     data.forEach(function (v: string, idx: number) {
         if (idx < 2) return; //Skip month / day
         if (v.indexOf(':') < 0) {
@@ -96,7 +96,6 @@ function seekLineForDay(mois: number, jour: number, startpos: number = 0): boole
 
     while (true) {
         b = f.readBuffer(43).toString();
-        debug(b)
         if (b.length < 43) return false;
         let data = b.split(',', 3)
         if (parseInt(data[0]) == mois && parseInt(data[1]) == jour) {
@@ -130,7 +129,7 @@ function loadNextSalat(mois: number, jour: number, heureAct: number, minAct: num
         basic.showIcon(IconNames.No)
         return;
     }
-    computeSalatTimeFromRecord(f.readBuffer(43).toString(), heureAct, minAct)
+    computeSalatTimeFromRecord(f.readBuffer(41).toString(), heureAct, minAct)
     if (nextSalat >= 0) {
         basic.showIcon(IconNames.Yes)
         return;
@@ -153,7 +152,7 @@ function loadNextSalat(mois: number, jour: number, heureAct: number, minAct: num
         basic.showIcon(IconNames.No)
         return;
     }
-    computeSalatTimeFromRecord(f.readBuffer(43).toString(), 0, 0)
+    computeSalatTimeFromRecord(f.readBuffer(41).toString(), 0, 0)
     if (nextSalat >= 0) {
         basic.showIcon(IconNames.Yes)
     } else {
@@ -161,27 +160,29 @@ function loadNextSalat(mois: number, jour: number, heureAct: number, minAct: num
     }
 }
 
-function checkAdhan(h: number, m: number) {
+function checkAdhan(h: number, m: number): boolean {
     if (nextSalat < 0) {
-        return;
+        return false;
     }
-    if (nextSalatMin == m && nextSalatHour % 24 == h) {
-        basic.showIcon(IconNames.Butterfly)
-        for (let i = 0; i < 4; i++) {
-            music.playTone(262, music.beat(BeatFraction.Breve))
-            music.playTone(262, music.beat(BeatFraction.Half))
-            music.playTone(262, music.beat(BeatFraction.Breve))
-        }
-        basic.pause(100)
-        basic.showString("Allaho Akbar")
-        nextSalat = -1
-    }
+    return (nextSalatMin == m && nextSalatHour % 24 == h);
 }
-function updateSleepState() {
-    nacc = input.acceleration(Dimension.Strength)
+
+function doAdhan() {
+    basic.showIcon(IconNames.Butterfly)
+    for (let i = 0; i < 4; i++) {
+        music.playTone(Note.C, music.beat(BeatFraction.Breve))
+        music.playTone(Note.A, music.beat(BeatFraction.Half))
+        music.playTone(Note.B3, music.beat(BeatFraction.Breve))
+    }
+    basic.pause(100)
+    basic.showString("Allaho Akbar")
+    nextSalat = -1
+}
+function updateSleepState(forceWake: boolean = false) {
+    let nacc = input.acceleration(Dimension.Strength)
     // Reveiller ou prologer le reveil si activiter
     // accelrometre
-    if (Math.abs(nacc - acc) > 50) {
+    if (Math.abs(nacc - acc) > 50 || forceWake) {
         wakeUpTime = input.runningTime()
         OLED12864_I2C.on()
         basic.showIcon(IconNames.Happy)
@@ -196,20 +197,13 @@ function updateSleepState() {
         basic.showString("")
     }
 }
-// Protocol MM# => Dump calendar for given month
-input.onButtonPressed(Button.B, function () {
 
-})
-input.onButtonPressed(Button.A, function () {
-
-})
-let nacc = 0
 let sleepTimeOutMillis = 0
 let acc = 0
 let wakeUpTime = 0
 let f: files.File = null
-let mois31: number[] = []
-let fail = false
+let mois31: number[] = [1, 3, 5, 7, 8, 10, 12]
+let salatNames: string[] = ['Fajr', 'Chorok', 'Dohr', 'Asr', 'Maghrib', 'Ishaa']
 let nextSalat = 0
 let b = ""
 let nextSalatHour = 0
@@ -240,7 +234,6 @@ function debug(message: string, message2: string = null, message3: string = null
     if (message3) o = o + message3;
     serial.writeLine(o)
 }
-mois31 = [1, 3, 5, 7, 8, 10, 12]
 serial.redirectToUSB()
 serial.setRxBufferSize(50)
 nextSalatHour = -1
@@ -258,10 +251,12 @@ ds.start()
 OLED12864_I2C.init(60)
 OLED12864_I2C.on()
 basic.forever(function () {
-    checkAdhan(ds.getHour(), ds.getMinute())
-    updateSleepState()
+    let adhan = checkAdhan(ds.getHour(), ds.getMinute())
+
+    updateSleepState(adhan)
     if (nextSalat < 0) {
         loadNextSalat(ds.getMonth(), ds.getDay(), ds.getHour(), ds.getMinute())
+        OLED12864_I2C.clear()
     }
     if (wakeUpTime >= 0) {
         OLED12864_I2C.showString(
@@ -276,11 +271,14 @@ basic.forever(function () {
             "" + toTwoDigitText(ds.getHour()) + ":" + toTwoDigitText(ds.getMinute()) + "." + toTwoDigitText(ds.getSecond()),
             1
         )
-        OLED12864_I2C.showString(
-            0,
-            2,
-            "" + nextSalat + " " + nextSalatHour + ":" + nextSalatMin,
-            1
-        )
+        if (nextSalat > 0) {
+            OLED12864_I2C.showString(
+                0,
+                2,
+                salatNames[nextSalat - 1] + ":" + toTwoDigitText(nextSalatHour) + ":" + toTwoDigitText(nextSalatMin),
+                1
+            )
+        }
     }
+    if (adhan) doAdhan()
 })
