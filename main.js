@@ -167,13 +167,26 @@ function checkAdhan(h: number, m: number): boolean {
     return (nextSalatMin == m && nextSalatHour % 24 == h);
 }
 
+
+input.onButtonPressed(Button.A, function () {
+    doAdhan()
+})
+
 function doAdhan() {
     basic.showIcon(IconNames.Butterfly)
-    for (let i = 0; i < 4; i++) {
-        music.playTone(Note.C, music.beat(BeatFraction.Breve))
-        music.playTone(Note.A, music.beat(BeatFraction.Half))
-        music.playTone(Note.B3, music.beat(BeatFraction.Breve))
+    for (let i = 0; i < (nextSalat - 1); i++) {
+        music.playTone(Note.E5, music.beat(BeatFraction.Whole))
+        basic.pause(400)
     }
+
+    if (nextSalat != 2) {
+        for (let i = 0; i < 2; i++) {
+            music.playTone(Note.C, music.beat(BeatFraction.Breve))
+            music.playTone(Note.A, music.beat(BeatFraction.Half))
+            music.playTone(Note.B3, music.beat(BeatFraction.Breve))
+        }
+    }
+
     basic.pause(100)
     basic.showString("Allaho Akbar")
     nextSalat = -1
