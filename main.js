@@ -1,5 +1,4 @@
-// proocole: MM$ => Dump calendar of given month
-// MM,DD$ => Dump calender of given day
+// proocole:
 // MM,DD,FH:FM,CH:CM,DH:DM,AH:AM,MH:MM,IH:IM$ =>
 // Umpdate calender of given day
 //
@@ -9,14 +8,52 @@
 // C is for chourouk
 //
 // type #$ to cancel line completely
+
+function serialHelp() {
+    serial.writeLine("\r\nSerial Interface :")
+    serial.writeLine("SETDT YYYY,MM,DD,DOW,HH,MM$ : DOW is day of week : 1 = monday")
+    serial.writeLine("DUMPTIMES$: get the full timesheet")
+    serial.writeLine("MM,DD,FH:FM,CH:CM,DH:DM,AH:AM,MH:MM,IH:IM$ : add / update timesheet entry ")
+}
+
+
+function serialFail(message: string = null) {
+    serial.writeLine("\r\n")
+    if (message) serial.writeLine(message);
+    serialHelp()
+    serialFinish("FAILED")
+}
+
+function serialFinish(message: string = null) {
+    if (message) serial.writeString(message);
+    serial.writeString("\r\n$");
+}
+
 serial.onDataReceived(serial.delimiters(Delimiters.Dollar), function () {
     basic.showIcon(IconNames.TShirt)
     let dataline: string = serial.readUntil(serial.delimiters(Delimiters.Dollar))
+
     if (dataline.indexOf('#') >= 0) {
-        serial.writeString("\r\n Cancel line")
+        serialFinish("\r\n Command ignored : contains #")
         return;
     }
-    if (dataline.length == 0) {
+
+    if (dataline.substr(0, 6) == "SETDT ") {
+        let data = dataline.split(' ')[1].split(',').map(parseInt);
+        serial.writeNumber(data.length)
+        if (data.length != 6) {
+            serialFail("BAD date time format: expected YYYY,MM,DD,DOW,HH,MM");
+            return;
+        }
+        ds.DateTime(data[0], data[1], data[2], data[3], data[4], data[5], 0);
+        nextSalat = -1
+
+
+        serialFinish("Ok")
+        return;
+    }
+
+    if (dataline.indexOf("DUMPTIMES") == 0) {
         serial.writeLine("Dumping salat times file")
         f.seek(0, FileSystemSeekFlags.Set)
         let b: Buffer = null;
@@ -24,61 +61,34 @@ serial.onDataReceived(serial.delimiters(Delimiters.Dollar), function () {
             b = f.readBuffer(64)
             serial.writeBuffer(b)
         } while (b.length > 0)
-        serial.writeLine("\r\n done")
+        serialFinish("\r\n done")
         return;
     }
 
-    while (dataline.length > 0 && "\n\r\t ".indexOf(dataline[0]) >= 0)
-        dataline = dataline.substr(1)
 
     if (dataline.length != 41) {
-        serial.writeLine("Bad format : line must be 41 characters, " + dataline.length + " found")
+        serialFail("Bad format : line must be 41 characters, " + dataline.length + " found")
         return;
     }
 
     serial.writeString("\r\nProcessing:")
-    serial.writeLine(dataline)
 
     let data = dataline.split(',')
 
     if (data.length != 8) {
-        serial.writeLine("Bad format: 8 columns required")
+        serialFail("Bad format: 8 columns required")
         return;
     }
     let mois = parseInt(data[0])
     if (!(mois >= 1 && mois <= 12)) {
-        serial.writeLine("Bad format: Col 1 (month) must be a number between 1 and 12")
+        serialFail("Bad format: Col 1 (month) must be a number between 1 and 12")
         return;
     }
     let jour = parseInt(data[1])
     if (!(jour >= 1 && jour <= 31)) {
-        serial.writeLine("Bad format: Col 2 (day) must be a number between 1 and 31")
+        serialFail("Bad format: Col 2 (day) must be a number between 1 and 31")
         return;
     }
-    let fail: boolean = false
-    data.forEach(function (v: string, idx: number) {
-        if (idx < 2) return; //Skip month / day
-        if (v.indexOf(':') < 0) {
-            serial.writeLine("Bad format: " + v + " is not a valid time.");
-            fail = true;
-        }
-        let q = v.split(':');
-        j = parseInt(q[0]);
-        if (!(j >= 0 && j < 48)) {
-            serial.writeLine("Bad format: " + v + " is not a valid time.");
-            fail = true;
-        }
-
-        j = parseInt(q[1]);
-        if (!(j >= 0 && j < 60)) {
-            serial.writeLine("Bad format: " + v + " is not a valid time.");
-            fail = true;
-        }
-    });
-    if (fail) {
-        return;
-    }
-    serial.writeLine("Updating salat times")
 
     if (!seekLineForDay(mois, jour))
         f.seek(0, FileSystemSeekFlags.End)
@@ -86,7 +96,7 @@ serial.onDataReceived(serial.delimiters(Delimiters.Dollar), function () {
     f.writeString(dataline + "\r\n")
     f.flush()
     nextSalat = -1
-    serial.writeLine("Done")
+    serialFinish("Done")
     basic.showIcon(IconNames.Yes)
 })
 
@@ -180,14 +190,14 @@ function doAdhan() {
     }
 
     if (nextSalat != 2) {
-        for (let i = 0; i < 2; i++) {
+        let count = nextSalat == 1 ? 4 : 2
+        for (let i = 0; i < count; i++) {
             music.playTone(Note.C, music.beat(BeatFraction.Breve))
             music.playTone(Note.A, music.beat(BeatFraction.Half))
             music.playTone(Note.B3, music.beat(BeatFraction.Breve))
         }
     }
 
-    basic.pause(100)
     basic.showString("Allaho Akbar")
     nextSalat = -1
 }
@@ -249,6 +259,7 @@ function debug(message: string, message2: string = null, message3: string = null
 }
 serial.redirectToUSB()
 serial.setRxBufferSize(50)
+serial.setTxBufferSize(50)
 nextSalatHour = -1
 nextSalatMin = -1
 nextSalat = -1
